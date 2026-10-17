@@ -1,0 +1,86 @@
+{
+  "horizon_days": 20,
+  "anchor_date": "2026-03-12",
+  "inputs": [
+    {
+      "name": "dxy_pct",
+      "label": "US dollar index (DXY)",
+      "help": "Stronger dollar \u2192 usually cheaper oil before 2020; no reliable link since 2021.",
+      "units": "% change in DXY over the next 20 trading days",
+      "current_level": 99.46399688720705,
+      "default": 0.0,
+      "slider_min": -5.0,
+      "slider_max": 5.0,
+      "hard_min": -8.0,
+      "hard_max": 8.0,
+      "step": 0.5,
+      "historical_percentiles": {
+        "p1": -4.4999508514101025,
+        "p5": -3.0535292599165462,
+        "p25": -1.1466819121258298,
+        "p50": 0.10341498245029959,
+        "p75": 1.3486292299425418,
+        "p95": 3.294955746632318,
+        "p99": 4.979241724477694
+      }
+    },
+    {
+      "name": "vix_pct",
+      "label": "VIX (market fear)",
+      "help": "Rising fear \u2192 cheaper oil on average; also widens the interval.",
+      "units": "% change in VIX over the next 20 trading days",
+      "current_level": 24.229999542236328,
+      "default": 0.0,
+      "slider_min": -43.0,
+      "slider_max": 116.0,
+      "hard_min": -57.0,
+      "hard_max": 505.0,
+      "step": 1.0,
+      "historical_percentiles": {
+        "p1": -42.37893516252944,
+        "p5": -30.12229848999121,
+        "p25": -13.45431402856603,
+        "p50": -1.9388949167479124,
+        "p75": 13.158832071921527,
+        "p95": 51.40261270248635,
+        "p99": 115.72596748172529
+      }
+    },
+    {
+      "name": "gpr_pct",
+      "label": "Geopolitical Risk index (GPR)",
+      "help": "Monthly index; no statistically reliable effect on Brent in any era.",
+      "units": "% change in GPR over the next 20 trading days",
+      "current_level": 130.88766479492188,
+      "default": 0.0,
+      "slider_min": -34.0,
+      "slider_max": 67.0,
+      "hard_min": -41.0,
+      "hard_max": 203.0,
+      "step": 1.0,
+      "historical_percentiles": {
+        "p1": -33.509463486800755,
+        "p5": -21.18840179950779,
+        "p25": -5.34256319561878,
+        "p50": 0.0,
+        "p75": 3.035371503257041,
+        "p95": 34.34355598836645,
+        "p99": 66.31410144152076
+      }
+    }
+  ],
+  "eras": [
+    {
+      "key": "all",
+      "label": "All years (2010\u20132026)"
+    },
+    {
+      "key": "2010-2019",
+      "label": "Pre-COVID (2010\u20132019)"
+    },
+    {
+      "key": "2021-2026",
+      "label": "Post-COVID (2021\u20132026)"
+    }
+  ]
+}
