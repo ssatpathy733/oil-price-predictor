@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brent what-if explorer</title>
+
+<!-- fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+
+<style>
+  /* color settings */
+  :root {
+    --bg: #eef1f0;          /* interface background */
+    --panel: #ffffff;       /* panel background */
+    --ink: #1b2a2f;         /* main text */
+    --muted: #5b6b70;       /* other text */
+    --rule: #d3dad8;        /* division line */
+    --history: #1b2a2f;     /* historic prive */
+    --fan: rgba(200, 137, 27, 0.22);  /* prediction interval filling */
+    --fan-edge: #c8891b;    /* upper and lower boundaries */
+    --median: #8a5a00;      /* median line */
+    --up: #2f7f7a;          /* factors that increase oil price */
+    --down: #a23b3b;        /* factors that decrease oil price */
+    --warn-bg: #fff4dc;
+    --warn-ink: #7a4d00;
+    --err-bg: #fbe3e3;
+    --err-ink: #7d1f1f;
+  }
+  /* dark mode */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: #142024;
+      --panel: #1b2a2f;
+      --ink: #e6ecea;
+      --muted: #9aaaae;
+      --rule: #30434a;
+      --history: #e6ecea;
+      --fan: rgba(230, 170, 60, 0.22);
+      --fan-edge: #e0a83c;
+      --median: #f0c060;
+      --up: #5fb8b1;
+      --down: #e07a7a;
+      --warn-bg: #3a2e14;
+      --warn-ink: #f3d08a;
+      --err-bg: #3d1e1e;
+      --err-ink: #f2b3b3;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Barlow", "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 40px; }
+
+  /* header and conclusion */
+  header h1 {
+    font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+    font-weight: 600;
+    font-size: 20px;
+    margin: 0 0 6px;
+    color: var(--muted);
+  }
+  #headline {
+    font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+    font-weight: 700;
+    font-size: clamp(26px, 3.6vw, 40px);
+    line-height: 1.15;
+    margin: 0 0 6px;
+    max-width: 34ch;
+  }
+  #subline { color: var(--muted); margin: 0 0 22px; max-width: 70ch; }
+
+  /* layout (panel on the left, image on the right) */
+  .layout {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 18px;
+  }
+  .panel h2 {
+    font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+    font-weight: 600;
+    font-size: 20px;
+    margin: 0 0 12px;
+  }
+
+  /* slider */
+  .slider { padding: 14px 0; border-top: 1px solid var(--rule); }
+  .slider:first-of-type { border-top: none; padding-top: 0; }
+  .slider-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .slider label { font-weight: 600; }
+  .slider .value {
+    font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+    font-weight: 600;
+    font-size: 20px;
+    min-width: 4.5ch;
+    text-align: right;
+  }
+  .slider input[type=range] { width: 100%; margin: 8px 0 4px; accent-color: var(--fan-edge); }
+  .slider .range-ends { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
+  .slider .help { font-size: 14px; color: var(--muted); margin: 6px 0 0; }
+
+  /* choose time */
+  fieldset { border: none; padding: 0; margin: 0; }
+  .era-block { border-top: 1px solid var(--rule); padding-top: 14px; }
+  legend { font-weight: 600; padding: 0; margin-bottom: 8px; }
+  .era { display: block; margin: 4px 0; cursor: pointer; }
+  .era input { accent-color: var(--fan-edge); margin-right: 6px; }
+
+  button {
+    font: inherit;
+    margin-top: 16px;
+    padding: 8px 14px;
+    border: 1px solid var(--rule);
+    background: transparent;
+    color: var(--ink);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--muted); }
+  :focus-visible { outline: 2px solid var(--fan-edge); outline-offset: 2px; }
+
+  /* chart regions */
+  .chart-box { position: relative; height: 420px; }
+  .contrib-box { position: relative; height: 170px; }
+  .legend-row { display: flex; flex-wrap: wrap; gap: 18px; font-size: 14px; color: var(--muted); margin-top: 10px; }
+  .swatch { display: inline-block; width: 22px; height: 10px; margin-right: 6px; vertical-align: middle; }
+
+  .right-col { display: grid; gap: 20px; }
+  #contrib-note { font-size: 14px; color: var(--muted); margin: 8px 0 0; }
+
+  /* notice */
+  .notice { border-radius: 4px; padding: 10px 14px; margin: 0 0 16px; font-size: 15px; }
+  .notice.warn { background: var(--warn-bg); color: var(--warn-ink); }
+  .notice.error { background: var(--err-bg); color: var(--err-ink); }
+  .notice code { font-size: 14px; }
+  [hidden] { display: none !important; }
+
+  /* realtime assistant placeholder */
+  .assistant input {
+    width: 100%; font: inherit; padding: 10px; border-radius: 4px;
+    border: 1px solid var(--rule); background: var(--bg); color: var(--muted);
+  }
+
+  footer { margin-top: 26px; font-size: 13px; color: var(--muted); max-width: 80ch; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Brent crude: what if the world changes?</h1>
+    <p id="headline">Loading the model…</p>
+    <p id="subline">Move the sliders to describe how the next 20 trading days might go. The shaded band shows where Brent landed in 8 out of 10 similar situations from 2010–2026.</p>
+  </header>
+
+  <!-- if cannot connect to backend display this -->
+  <div id="error" class="notice error" hidden></div>
+  <!-- if return warning display this -->
+  <div id="warnings" class="notice warn" hidden></div>
+
+  <div class="layout">
+
+    <!-- left slider panel） -->
+    <aside class="panel">
+      <h2>Your scenario</h2>
+      <div id="sliders"></div>
+      <div class="era-block"><fieldset>
+        <legend>Learn from which years?</legend>
+        <div id="eras"></div>
+      </fieldset></div>
+      <button id="reset" type="button">Reset to no change</button>
+    </aside>
+
+    <!-- main graphics, contribution graphics, chatbox placeholder -->
+    <div class="right-col">
+      <section class="panel">
+        <h2>Brent price, past 60 days and next 20 trading days</h2>
+        <div class="chart-box"><canvas id="mainChart" aria-label="Brent price history and forecast range" role="img"></canvas></div>
+        <div class="legend-row">
+          <span><span class="swatch" style="background:var(--history)"></span>Actual price</span>
+          <span><span class="swatch" style="background:var(--median)"></span>Middle estimate (p50)</span>
+          <span><span class="swatch" style="background:var(--fan);border:1px solid var(--fan-edge)"></span>Likely range (p10 to p90)</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>What moved the middle estimate</h2>
+        <div class="contrib-box"><canvas id="contribChart" aria-label="Contribution of each factor in US dollars" role="img"></canvas></div>
+        <p id="contrib-note"></p>
+      </section>
+
+      <section class="panel assistant">
+        <h2>Ask about an event</h2>
+        <input type="text" disabled placeholder="Coming soon: describe an event, like “OPEC announces a production cut”">
+      </section>
+    </div>
+  </div>
+
+  <footer id="disclaimer"></footer>
+</div>
+
+<script>
+// ================================================================
+// backend address, run in terminal：
+//   uvicorn api.main:app --reload --port 8000
+// ================================================================
+const API = "http://localhost:8000";
+const HISTORY_DAYS = 60;   // how many days' historic price is displayed, set to 60
+
+// current state variables
+let spec = null;           // slider info from /spec
+let history = [];          // historic price from /history 
+let currentEra = "all";    // current era
+let mainChart = null;      // main chart
+let contribChart = null;   // contribution chart
+let requestCounter = 0;    // cast outdated request results
+let debounceTimer = null;  // avoid too many requests with slider
+
+// read color from CSS, color coherency
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+// process number display
+const usd = (x) => "$" + x.toFixed(2);
+const signed = (x, digits = 1) => (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x).toFixed(digits);
+
+// show hidden error
+function showError(html) {
+  const box = document.getElementById("error");
+  box.innerHTML = html;
+  box.hidden = !html;
+}
+
+// ================================================================
+// step 1: generate slider and era options from /spec
+// ================================================================
+function buildControls() {
+  const sliderBox = document.getElementById("sliders");
+  sliderBox.innerHTML = "";
+
+  for (const input of spec.inputs) {
+    const div = document.createElement("div");
+    div.className = "slider";
+    div.innerHTML = `
+      <div class="slider-top">
+        <label for="${input.name}">${input.label}</label>
+        <span class="value" id="${input.name}-value"></span>
+      </div>
+      <input type="range" id="${input.name}"
+             min="${input.slider_min}" max="${input.slider_max}"
+             step="${input.step}" value="${input.default}">
+      <div class="range-ends"><span>${input.slider_min}%</span><span>today: ${input.current_level.toFixed(1)}</span><span>+${input.slider_max}%</span></div>
+      <p class="help">${input.help}</p>
+    `;
+    sliderBox.appendChild(div);
+
+    const range = div.querySelector("input");
+    range.addEventListener("input", () => {
+      updateSliderLabel(input.name);
+      scheduleForecast();
+    });
+    updateSliderLabel(input.name);
+  }
+
+  // era option
+  const eraBox = document.getElementById("eras");
+  eraBox.innerHTML = "";
+  for (const era of spec.eras) {
+    const label = document.createElement("label");
+    label.className = "era";
+    label.innerHTML = `<input type="radio" name="era" value="${era.key}" ${era.key === currentEra ? "checked" : ""}>${era.label}`;
+    label.querySelector("input").addEventListener("change", (e) => {
+      currentEra = e.target.value;
+      scheduleForecast();
+    });
+    eraBox.appendChild(label);
+  }
+}
+
+// current value next to slider
+function updateSliderLabel(name) {
+  const v = parseFloat(document.getElementById(name).value);
+  document.getElementById(name + "-value").textContent = signed(v, 1) + "%";
+}
+
+// read from all current values from sliders and turn into:{dxy_pct: 2, vix_pct: 30, gpr_pct: 0}
+function readSliders() {
+  const values = {};
+  for (const input of spec.inputs) {
+    values[input.name] = parseFloat(document.getElementById(input.name).value);
+  }
+  return values;
+}
+
+// ================================================================
+// step 2: send slider value to /forecast and get prediction
+// ================================================================
+async function postForecast(body) {
+  const res = await fetch(`${API}/forecast`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.detail || `The model returned error ${res.status}`);
+  }
+  return res.json();
+}
+
+// wait for 150ms when sliding to send requests
+function scheduleForecast() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(runForecast, 150);
+}
+
+async function runForecast() {
+  const myId = ++requestCounter;
+  try {
+    const result = await postForecast({ ...readSliders(), era: currentEra });
+    if (myId !== requestCounter) return;  // new request, discard this
+    showError("");
+    render(result);
+  } catch (err) {
+    if (myId !== requestCounter) return;
+    showError(`Couldn’t get a forecast: ${err.message}`);
+  }
+}
+
+// ================================================================
+// step 3: visualize result
+// ================================================================
+function render(r) {
+  const s = r.summary;
+
+  // conclusion on top
+  const direction = s.median_change_pct > 0.05 ? "up" : s.median_change_pct < -0.05 ? "down" : "flat";
+  const changeText = direction === "flat" ? "about where it is today" : `${signed(s.median_change_pct, 1)}% from today’s ${usd(r.spot)}`;
+  document.getElementById("headline").textContent =
+    `In 20 trading days, Brent most likely sits near ${usd(s.p50)}, ${changeText}.`;
+  document.getElementById("subline").textContent =
+    `In 8 out of 10 similar situations from history, the price ended between ${usd(s.p10)} and ${usd(s.p90)}. Starting point: ${r.as_of}. Relationships learned from: ${r.era_label}.`;
+
+  // warning
+  const warnBox = document.getElementById("warnings");
+  warnBox.textContent = r.warnings.join(" ");
+  warnBox.hidden = r.warnings.length === 0;
+
+  document.getElementById("disclaimer").textContent = r.disclaimer;
+
+  drawMainChart(r.path);
+  drawContribChart(r);
+}
+
+// main graph: historic line + p10/p50/p90 interval
+function drawMainChart(path) {
+  // historic date + next 20 trading dates
+  // path = 0 is last day of historic days
+  const labels = history.map((h) => h.date).concat(path.slice(1).map((p) => p.date));
+  const pad = new Array(history.length - 1).fill(null);  // space holder
+
+  const histData = history.map((h) => h.brent).concat(new Array(path.length - 1).fill(null));
+  const p10 = pad.concat(path.map((p) => p.p10));
+  const p50 = pad.concat(path.map((p) => p.p50));
+  const p90 = pad.concat(path.map((p) => p.p90));
+
+  if (!mainChart) {
+    mainChart = new Chart(document.getElementById("mainChart"), {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          { label: "Actual", data: histData, borderColor: cssVar("--history"), borderWidth: 2, pointRadius: 0 },
+          { label: "p10", data: p10, borderColor: cssVar("--fan-edge"), borderWidth: 1, borderDash: [4, 3], pointRadius: 0 },
+          // fill: interval
+          { label: "p90", data: p90, borderColor: cssVar("--fan-edge"), borderWidth: 1, borderDash: [4, 3], pointRadius: 0,
+            fill: "-1", backgroundColor: cssVar("--fan") },
+          { label: "p50", data: p50, borderColor: cssVar("--median"), borderWidth: 2.5, pointRadius: 0 },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 250 },
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { display: false },  // 
+          tooltip: {
+            filter: (item) => item.raw !== null,
+            callbacks: { label: (c) => `${c.dataset.label}: ${usd(c.raw)}` },
+          },
+        },
+        scales: {
+          x: { ticks: { color: cssVar("--muted"), maxTicksLimit: 8, maxRotation: 0 }, grid: { display: false } },
+          y: {
+            min: yRange.min, max: yRange.max,  // fix y axis
+            ticks: { color: cssVar("--muted"), callback: (v) => "$" + v },
+            grid: { color: cssVar("--rule") },
+          },
+        },
+      },
+    });
+  } else {
+    mainChart.data.labels = labels;
+    mainChart.data.datasets[1].data = p10;
+    mainChart.data.datasets[2].data = p90;
+    mainChart.data.datasets[3].data = p50;
+    mainChart.update();
+  }
+}
+
+// contribution chart
+function drawContribChart(r) {
+  const names = spec.inputs.map((i) => i.label);
+  const keys = spec.inputs.map((i) => i.name.replace("_pct", ""));  // dxy_pct -> dxy
+  const values = keys.map((k) => r.contributions[k].usd);
+  const colors = values.map((v) => (v >= 0 ? cssVar("--up") : cssVar("--down")));
+  const limit = Math.ceil(Math.max(3, ...values.map(Math.abs)) * 1.15);  // 
+
+  if (!contribChart) {
+    contribChart = new Chart(document.getElementById("contribChart"), {
+      type: "bar",
+      data: { labels: names, datasets: [{ data: values, backgroundColor: colors, borderRadius: 2 }] },
+      options: {
+        indexAxis: "y",  // horizontal chart
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 250 },
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `${signed(c.raw, 2)} USD` } } },
+        scales: {
+          x: { min: -limit, max: limit, ticks: { color: cssVar("--muted"), callback: (v) => (v > 0 ? "+$" : v < 0 ? "−$" : "$") + Math.abs(v) },
+               grid: { color: (ctx) => (ctx.tick.value === 0 ? cssVar("--muted") : cssVar("--rule")) } },
+          y: { ticks: { color: cssVar("--ink") }, grid: { display: false } },
+        },
+      },
+    });
+  } else {
+    contribChart.data.datasets[0].data = values;
+    contribChart.data.datasets[0].backgroundColor = colors;
+    contribChart.options.scales.x.min = -limit;
+    contribChart.options.scales.x.max = limit;
+    contribChart.update();
+  }
+
+  const total = values.reduce((a, b) => a + b, 0);
+  document.getElementById("contrib-note").textContent =
+    `Together these move the middle estimate by ${signed(total, 2)} USD. The range around it is much wider than any single push, because oil is hard to predict.`;
+}
+
+// ================================================================
+// fix y-axis range
+// ================================================================
+let yRange = { min: undefined, max: undefined };
+
+async function computeYRange() {
+  let lo = Math.min(...history.map((h) => h.brent));
+  let hi = Math.max(...history.map((h) => h.brent));
+  const [dxy, vix] = spec.inputs;
+  const jobs = [];
+  for (const era of spec.eras) {
+    for (const d of [dxy.slider_min, dxy.slider_max]) {
+      for (const v of [vix.slider_min, vix.slider_max]) {
+        jobs.push(postForecast({ dxy_pct: d, vix_pct: v, gpr_pct: 0, era: era.key }));
+      }
+    }
+  }
+  const results = await Promise.allSettled(jobs);
+  for (const r of results) {
+    if (r.status === "fulfilled") {
+      lo = Math.min(lo, r.value.summary.p10);
+      hi = Math.max(hi, r.value.summary.p90);
+    }
+  }
+  const pad = (hi - lo) * 0.05;
+  yRange = { min: Math.floor(lo - pad), max: Math.ceil(hi + pad) };
+}
+
+// ================================================================
+// reset button
+// ================================================================
+document.getElementById("reset").addEventListener("click", () => {
+  for (const input of spec.inputs) {
+    document.getElementById(input.name).value = input.default;
+    updateSliderLabel(input.name);
+  }
+  scheduleForecast();
+});
+
+// ================================================================
+// load
+// ================================================================
+async function start() {
+  if (typeof Chart === "undefined") {
+    showError("The chart library didn’t load. Check your internet connection, then reload this page.");
+    return;
+  }
+  try {
+    spec = await (await fetch(`${API}/spec`)).json();
+    history = await (await fetch(`${API}/history?days=${HISTORY_DAYS}`)).json();
+  } catch (err) {
+    document.getElementById("headline").textContent = "Can’t reach the model.";
+    showError(`The page couldn’t connect to <code>${API}</code>. In a terminal, go to the project folder and run <code>uvicorn api.main:app --reload --port 8000</code>, then reload this page.`);
+    return;
+  }
+  buildControls();
+  await computeYRange();
+  await runForecast();
+}
+
+start();
+</script>
+</body>
+</html>
