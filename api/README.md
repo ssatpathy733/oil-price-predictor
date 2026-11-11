@@ -20,7 +20,7 @@ Open http://localhost:8000/docs to try every endpoint in the browser.
 | GET | `/history?days=250` | Past Brent/DXY/VIX/GPR for the chart's history line |
 | GET | `/events` | 35 past events + what happened afterwards (for the chatbot) |
 | POST | `/forecast` | Slider values in, 20-day p10/p50/p90 fan + contributions out |
-| POST | `/ask` | Assistant explanation, historical analogs, and bounded slider suggestions |
+| POST | `/ask` | Mode-aware assistant explanation, historical analogs, and bounded slider suggestions |
 | GET | `/forecast?dxy_pct=2&vix_pct=40` | Same, query params, for quick browser tests |
 
 Bad input (unknown era, spot without sigma30, ...) returns HTTP 422 with the model's error message.
@@ -46,7 +46,8 @@ const result = await res.json();
 ## Assistant scenarios
 
 The assistant receives the 20-day outcomes for historical event analogs from `/events`.
-Its `/ask` response includes an explanation, verified historical references, and—when it can
+`/ask` accepts `mode: "general"` or `"business_professional"` (default: `"general"`). Its response
+includes an explanation, verified historical references, and—when it can
 ground a scenario in relevant examples—suggested slider values computed as the mean observed
 20-day DXY, VIX, and GPR changes across those references, clipped and rounded to the slider
 ranges. The response includes the observations and per-slider calculations; the frontend displays

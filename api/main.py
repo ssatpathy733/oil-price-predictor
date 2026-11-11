@@ -75,6 +75,7 @@ class ForecastRequest(BaseModel):
 
 class AskRequest(BaseModel):
     question: str
+    mode: Literal["general", "business_professional"] = "general"
     dxy_pct: float
     vix_pct: float
     gpr_pct: float
@@ -165,14 +166,22 @@ def ask_event(req: AskRequest):
         }
         for event in historical_events
     ]
+    audience_style = (
+        "Write for an educated non-expert in everyday language. Briefly explain relevant index terms "
+        "and avoid unexplained market jargon."
+        if req.mode == "general"
+        else "Write in concise business-professional market language. Assume the user understands "
+        "DXY, VIX, GPR, and oil-market terminology; do not add elementary definitions."
+    )
     system_prompt = (
         f"You are an energy market analyst embedded in a Brent crude scenario dashboard. "
+        f"{audience_style} "
         f"Current dashboard state: Spot price ${req.spot}, 20-day middle estimate ${req.p50}, "
         f"Sliders: DXY {req.dxy_pct:+.1f}%, VIX {req.vix_pct:+.1f}%, GPR {req.gpr_pct:+.1f}%, "
         f"Historical regime: '{req.era}'. "
         f"Write a brief 1-2 sentence plain-text introduction explaining the event's possible "
-        f"market context. Do not use Markdown, bullets, slider names, or slider actions in the "
-        f"introduction; the application will display the calculated slider actions as bullets. "
+        f"market context. Do not use Markdown, bullets, slider settings, or slider-action directions "
+        f"in the introduction; the application will display calculated actions as bullets. "
         f"Do not propose numerical slider changes. Select up to "
         f"three meaningfully relevant historical "
         f"analogs by listing their exact dates in evidence_dates. Do not generate slider values; "

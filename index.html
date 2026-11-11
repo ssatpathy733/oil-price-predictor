@@ -161,6 +161,10 @@
     width: 100%; font: inherit; padding: 10px; border-radius: 4px;
     border: 1px solid var(--rule); background: var(--bg); color: var(--muted);
   }
+  .mode-control { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
+  .mode-control .mode-label { color: var(--muted); font-size: 14px; font-weight: 600; }
+  .mode-control button { margin: 0; padding: 5px 10px; font-size: 14px; }
+  .mode-control button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--panel); }
 
   footer { margin-top: 26px; font-size: 13px; color: var(--muted); max-width: 80ch; }
 
@@ -214,6 +218,12 @@
 
       <section class="panel assistant">
         <h2>Ask about an event</h2>
+        <div class="mode-control" role="group" aria-label="Assistant response mode">
+          <span class="mode-label">Mode</span>
+          <button type="button" id="mode-general" aria-pressed="true">General</button>
+          <button type="button" id="mode-business" aria-pressed="false">Business Professional</button>
+        </div>
+        <p id="mode-help" style="margin: 0 0 10px; color: var(--muted); font-size: 13px;"></p>
         <p style="margin: 0 0 12px; color: var(--muted); font-size: 14px;">
           The assistant can compare an event with up to three historical examples and suggest DXY, VIX, and GPR slider values from their observed 20-day changes. It does not verify live events. Its analog matches and explanations can be wrong; no measured accuracy rate is available for them. Suggestions are illustrative scenarios, not probabilities or guarantees.
         </p>
@@ -259,6 +269,14 @@ let contribChart = null;   // contribution chart
 let requestCounter = 0;    // cast outdated request results
 let debounceTimer = null;  // avoid too many requests with slider
 let assistantSuggestionSignature = null;
+let assistantMode = "general";
+try {
+  assistantMode = localStorage.getItem("oilPredictorAssistantMode") === "business_professional"
+    ? "business_professional"
+    : "general";
+} catch (_) {
+  // Keep General as the default when browser storage is unavailable.
+}
 
 // read color from CSS, color coherency
 function cssVar(name) {
@@ -349,8 +367,42 @@ function readSliders() {
 }
 
 function scenarioSignature() {
-  return JSON.stringify({ ...readSliders(), era: currentEra });
+  return JSON.stringify({ ...readSliders(), era: currentEra, mode: assistantMode });
 }
+
+function updateAssistantModeControls() {
+  document.getElementById("mode-general").setAttribute("aria-pressed", String(assistantMode === "general"));
+  document.getElementById("mode-business").setAttribute("aria-pressed", String(assistantMode === "business_professional"));
+  document.getElementById("mode-help").textContent = assistantMode === "general"
+    ? "Everyday wording with brief explanations of relevant market indexes."
+    : "Concise market terminology without basic index definitions.";
+}
+
+function setAssistantMode(mode) {
+  if (!["general", "business_professional"].includes(mode) || mode === assistantMode) return;
+  assistantMode = mode;
+  try {
+    localStorage.setItem("oilPredictorAssistantMode", assistantMode);
+  } catch (_) {
+    // The current selection still applies for this page session.
+  }
+  updateAssistantModeControls();
+  invalidateAssistantSuggestion();
+
+  const answer = document.getElementById("ask-answer").textContent.trim();
+  if (answer) {
+    const status = document.getElementById("ask-status");
+    const modeName = mode === "general" ? "General" : "Business Professional";
+    status.textContent = document.getElementById("ask-btn").disabled
+      ? `Mode changed to ${modeName}. This response uses the mode selected when you asked; ask again after it finishes.`
+      : `Mode changed to ${modeName}. Ask again to refresh this response in that style.`;
+    status.hidden = false;
+  }
+}
+
+document.getElementById("mode-general").addEventListener("click", () => setAssistantMode("general"));
+document.getElementById("mode-business").addEventListener("click", () => setAssistantMode("business_professional"));
+updateAssistantModeControls();
 
 function invalidateAssistantSuggestion() {
   if (!assistantSuggestionSignature || assistantSuggestionSignature === scenarioSignature()) return;
@@ -360,7 +412,7 @@ function invalidateAssistantSuggestion() {
   const proposal = document.getElementById("ask-proposal");
   applyBtn.hidden = true;
   proposal.hidden = true;
-  status.textContent = "Your slider settings or historical period changed since this suggestion. Ask again to get a fresh suggestion for the current scenario.";
+  status.textContent = "Your response mode, slider settings, or historical period changed since this suggestion. Ask again to get a fresh response for the current scenario.";
   status.hidden = false;
 }
 
@@ -618,6 +670,7 @@ document.getElementById("ask-form").addEventListener("submit", async (e) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         question,
+        mode: assistantMode,
         ...readSliders(),
         era: lastResult ? lastResult.era_label : currentEra,
         spot: lastResult ? lastResult.spot : null,
@@ -631,7 +684,7 @@ document.getElementById("ask-form").addEventListener("submit", async (e) => {
 
     const scenarioStillMatches = requestedForSignature === scenarioSignature();
     if (!scenarioStillMatches) {
-      status.textContent = "Your slider settings or historical period changed while I was preparing this answer. It reflects the scenario from when you asked; ask again before applying a suggestion.";
+      status.textContent = "Your response mode, slider settings, or historical period changed while I was preparing this answer. It reflects the settings from when you asked; ask again before applying a suggestion.";
       status.hidden = false;
     }
 
