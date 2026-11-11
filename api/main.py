@@ -82,6 +82,10 @@ class AskRequest(BaseModel):
     spot: float | None = None
     p50: float | None = None
 
+class AskResponse(BaseModel):
+    answer: str
+    evidence_dates: List[str] = Field(default_factory=list)
+
 def run_forecast(req: ForecastRequest) -> dict:
     """Call the model, turning bad input into a clean 422 instead of a 500."""
     kwargs = req.model_dump(exclude_none=True)  # prices become plain {"date","brent"} dicts
@@ -144,14 +148,36 @@ def get_forecast(
     return run_forecast(ForecastRequest(dxy_pct=dxy_pct, vix_pct=vix_pct, gpr_pct=gpr_pct, era=era))
 
 @app.post("/ask")
-def ask_event(req: AskRequest): 
+def ask_event(req: AskRequest):
+    slider_specs = {item["name"]: item for item in feature_spec()["inputs"]}
+    historical_events = event_analogs()
+    compact_events = [
+        {
+            "date": event["date"],
+            "event_type": event["event_type"],
+            "description": event["description"],
+            "severity": event["severity"],
+            "brent_20d_pct": event["brent_20d_pct"],
+            "dxy_20d_pct": event["dxy_20d_pct"],
+            "vix_20d_pct": event["vix_20d_pct"],
+            "gpr_20d_pct": event["gpr_20d_pct"],
+            "model_check": event["model_check"],
+        }
+        for event in historical_events
+    ]
     system_prompt = (
         f"You are an energy market analyst embedded in a Brent crude scenario dashboard. "
         f"Current dashboard state: Spot price ${req.spot}, 20-day middle estimate ${req.p50}, "
         f"Sliders: DXY {req.dxy_pct:+.1f}%, VIX {req.vix_pct:+.1f}%, GPR {req.gpr_pct:+.1f}%, "
         f"Historical regime: '{req.era}'. "
-        f"Keep your response concise (3-4 sentences). Explain how the user's event impacts "
-        f"Brent crude, DXY, VIX, and GPR, and suggest how they might adjust the sliders."
+        f"Keep the answer concise (3-4 sentences). Explain how the user's event could affect "
+        f"Brent crude, DXY, VIX, and GPR. Select up to three meaningfully relevant historical "
+        f"analogs by listing their exact dates in evidence_dates. Do not generate slider values; "
+        f"the application calculates those from the selected events' observed 20-day changes. "
+        f"If the event is too vague or no analog is meaningfully relevant, use an empty "
+        f"evidence_dates list. Do not describe an analog as proof of causation. Explain that historical outcomes are examples, "
+        f"not guaranteed predictions. Historical analogs (20-trading-day observed changes): "
+        f"{json.dumps(compact_events, separators=(',', ':'))}"
     )
 
     response = client.models.generate_content(
@@ -159,10 +185,73 @@ def ask_event(req: AskRequest):
         contents=req.question,
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
+            response_mime_type="application/json",
+            response_schema=AskResponse,
         ),
     )
+    try:
+        parsed = response.parsed
+        if parsed is None:
+            parsed = AskResponse.model_validate_json(response.text)
+        elif isinstance(parsed, AskResponse):
+            parsed = parsed.model_dump()
+        else:
+            parsed = AskResponse.model_validate(parsed).model_dump()
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=502, detail="The assistant returned an invalid scenario.") from exc
 
-    return {"answer": response.text}
+    known_events = {event["date"]: event for event in historical_events}
+    evidence = []
+    for date in parsed.pop("evidence_dates", []):
+        event = known_events.get(date)
+        if event and all(item["date"] != date for item in evidence):
+            evidence.append({
+                "date": event["date"],
+                "description": event["description"],
+                "event_type": event["event_type"],
+                "brent_20d_pct": event["brent_20d_pct"],
+                "dxy_20d_pct": event["dxy_20d_pct"],
+                "vix_20d_pct": event["vix_20d_pct"],
+                "gpr_20d_pct": event["gpr_20d_pct"],
+                "model_check": event["model_check"],
+            })
+        if len(evidence) == 3:
+            break
+    parsed["evidence"] = evidence
+    if evidence:
+        # Proposed slider moves are the mean observed 20-day changes across cited analogs.
+        suggestion = {}
+        calculations = []
+        for name, item in slider_specs.items():
+            factor = name.removesuffix("_pct")
+            observed_key = f"{factor}_20d_pct"
+            observed_values = [float(event[observed_key]) for event in evidence]
+            mean_observed = sum(observed_values) / len(observed_values)
+            low, high, step = item["slider_min"], item["slider_max"], item["step"]
+            clipped_value = min(high, max(low, mean_observed))
+            snapped_value = low + round((clipped_value - low) / step) * step
+            slider_value = round(min(high, max(low, snapped_value)), 4)
+            suggestion[name] = slider_value
+            calculations.append({
+                "name": name,
+                "label": item["label"],
+                "observations": [
+                    {"date": event["date"], "value": round(value, 2)}
+                    for event, value in zip(evidence, observed_values)
+                ],
+                "mean_observed": round(mean_observed, 2),
+                "slider_value": slider_value,
+                "clipped": abs(clipped_value - mean_observed) > 1e-9,
+                "rounded_to_step": abs(snapped_value - clipped_value) > 1e-9,
+                "step": step,
+            })
+        parsed["suggested_sliders"] = suggestion
+        parsed["suggestion_calculations"] = calculations
+    else:
+        parsed["suggested_sliders"] = None
+        parsed["suggestion_calculations"] = []
+
+    return parsed
 
 @app.get("/")
 async def serve_index():

@@ -173,7 +173,7 @@
   <header>
     <h1>Brent crude: what if the world changes?</h1>
     <p id="headline">Loading the model…</p>
-    <p id="subline">Move the sliders to describe how the next 20 trading days might go. The shaded band shows where Brent landed in 8 out of 10 similar situations from 2010–2026.</p>
+    <p id="subline">Move the sliders to explore conditional scenarios for the next 20 trading days. The model’s 10th–90th percentile range summarizes its historical scenario distribution; it is not a guarantee or a measured accuracy rate.</p>
   </header>
 
   <!-- if cannot connect to backend display this -->
@@ -202,7 +202,7 @@
         <div class="legend-row">
           <span><span class="swatch" style="background:var(--history)"></span>Actual price</span>
           <span><span class="swatch" style="background:var(--median)"></span>Middle estimate (p50)</span>
-          <span><span class="swatch" style="background:var(--fan);border:1px solid var(--fan-edge)"></span>Likely range (p10 to p90)</span>
+          <span><span class="swatch" style="background:var(--fan);border:1px solid var(--fan-edge)"></span>Model range (p10 to p90)</span>
         </div>
       </section>
 
@@ -214,6 +214,9 @@
 
       <section class="panel assistant">
         <h2>Ask about an event</h2>
+        <p style="margin: 0 0 12px; color: var(--muted); font-size: 14px;">
+          The assistant can compare an event with up to three historical examples and suggest DXY, VIX, and GPR slider values from their observed 20-day changes. It does not verify live events. Its analog matches and explanations can be wrong; no measured accuracy rate is available for them. Suggestions are illustrative scenarios, not probabilities or guarantees.
+        </p>
         <form id="ask-form" style="display: flex; gap: 8px;">
           <input 
             type="text" 
@@ -224,7 +227,12 @@
           >
           <button type="submit" id="ask-btn" style="margin-top: 0; white-space: nowrap;">Ask</button>
         </form>
-        <div id="ask-response" style="margin-top: 12px; font-size: 15px; line-height: 1.55;"></div>
+        <div id="ask-response" aria-live="polite" style="margin-top: 12px; font-size: 15px; line-height: 1.55;">
+          <p id="ask-answer" style="margin: 0;"></p>
+          <p id="ask-evidence" hidden style="margin: 10px 0 0;"></p>
+          <p id="ask-proposal" hidden style="margin: 10px 0 0; white-space: pre-line;"></p>
+          <button type="button" id="ask-apply" hidden style="margin-top: 10px;">Apply these changes</button>
+        </div>
       </section>
       
     </div>
@@ -249,6 +257,7 @@ let mainChart = null;      // main chart
 let contribChart = null;   // contribution chart
 let requestCounter = 0;    // cast outdated request results
 let debounceTimer = null;  // avoid too many requests with slider
+let assistantSuggestionSignature = null;
 
 // read color from CSS, color coherency
 function cssVar(name) {
@@ -292,6 +301,7 @@ function buildControls() {
     const range = div.querySelector("input");
     range.addEventListener("input", () => {
       updateSliderLabel(input.name);
+      invalidateAssistantSuggestion();
       scheduleForecast();
     });
     updateSliderLabel(input.name);
@@ -306,6 +316,7 @@ function buildControls() {
     label.innerHTML = `<input type="radio" name="era" value="${era.key}" ${era.key === currentEra ? "checked" : ""}>${era.label}`;
     label.querySelector("input").addEventListener("change", (e) => {
       currentEra = e.target.value;
+      invalidateAssistantSuggestion();
       scheduleForecast();
     });
     eraBox.appendChild(label);
@@ -325,6 +336,20 @@ function readSliders() {
     values[input.name] = parseFloat(document.getElementById(input.name).value);
   }
   return values;
+}
+
+function scenarioSignature() {
+  return JSON.stringify({ ...readSliders(), era: currentEra });
+}
+
+function invalidateAssistantSuggestion() {
+  if (!assistantSuggestionSignature || assistantSuggestionSignature === scenarioSignature()) return;
+  assistantSuggestionSignature = null;
+  const applyBtn = document.getElementById("ask-apply");
+  const proposal = document.getElementById("ask-proposal");
+  applyBtn.hidden = true;
+  proposal.textContent = "Your slider settings or historical period changed since this suggestion. Ask again to get a fresh suggestion for the current scenario.";
+  proposal.hidden = false;
 }
 
 // ================================================================
@@ -376,9 +401,9 @@ function render(r) {
   const direction = s.median_change_pct > 0.05 ? "up" : s.median_change_pct < -0.05 ? "down" : "flat";
   const changeText = direction === "flat" ? "about where it is today" : `${signed(s.median_change_pct, 1)}% from today’s ${usd(r.spot)}`;
   document.getElementById("headline").textContent =
-    `In 20 trading days, Brent most likely sits near ${usd(s.p50)}, ${changeText}.`;
+    `The model’s 20-day midpoint is ${usd(s.p50)}, ${changeText}.`;
   document.getElementById("subline").textContent =
-    `In 8 out of 10 similar situations from history, the price ended between ${usd(s.p10)} and ${usd(s.p90)}. Starting point: ${r.as_of}. Relationships learned from: ${r.era_label}.`;
+    `The model’s 10th–90th percentile scenario range is ${usd(s.p10)} to ${usd(s.p90)}. This range summarizes model scenarios; it is not a guarantee or a measured accuracy rate. Starting point: ${r.as_of}. Relationships learned from: ${r.era_label}.`;
 
   // warning
   const warnBox = document.getElementById("warnings");
@@ -522,6 +547,7 @@ document.getElementById("reset").addEventListener("click", () => {
     document.getElementById(input.name).value = input.default;
     updateSliderLabel(input.name);
   }
+  invalidateAssistantSuggestion();
   scheduleForecast();
 });
 
@@ -550,12 +576,24 @@ document.getElementById("ask-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const input = document.getElementById("ask-input");
   const btn = document.getElementById("ask-btn");
-  const out = document.getElementById("ask-response");
+  const out = document.getElementById("ask-answer");
+  const evidenceBox = document.getElementById("ask-evidence");
+  const proposal = document.getElementById("ask-proposal");
+  const applyBtn = document.getElementById("ask-apply");
 
   const question = input.value.trim();
   if (!question) return;
+  if (!spec) {
+    out.textContent = "The scenario controls are still loading. Please try again shortly.";
+    return;
+  }
+  const requestedForSignature = scenarioSignature();
 
   btn.disabled = true;
+  assistantSuggestionSignature = null;
+  applyBtn.hidden = true;
+  evidenceBox.hidden = true;
+  proposal.hidden = true;
   out.style.color = "var(--muted)";
   out.textContent = "Analyzing historical relationships…";
 
@@ -575,9 +613,71 @@ document.getElementById("ask-form").addEventListener("submit", async (e) => {
     const data = await res.json();
     out.style.color = "var(--ink)";
     out.textContent = data.answer;
+
+    const scenarioStillMatches = requestedForSignature === scenarioSignature();
+    if (!scenarioStillMatches) {
+      proposal.textContent = "Your slider settings or historical period changed while I was preparing this answer. It reflects the scenario from when you asked; ask again before applying a suggestion.";
+      proposal.hidden = false;
+    }
+
+    if (Array.isArray(data.evidence) && data.evidence.length) {
+      evidenceBox.textContent = "Historical analogs (observed changes over the following 20 trading days; examples, not causal proof): " +
+        data.evidence.map((event) =>
+          `${event.date} ${event.description}: Brent ${signed(Number(event.brent_20d_pct), 1)}%, ` +
+          `DXY ${signed(Number(event.dxy_20d_pct), 1)}%, VIX ${signed(Number(event.vix_20d_pct), 1)}%, ` +
+          `GPR ${signed(Number(event.gpr_20d_pct), 1)}% (${event.model_check})`
+        ).join(" · ");
+      evidenceBox.hidden = false;
+    }
+
+    const suggestion = data.suggested_sliders;
+    const validSuggestion = suggestion && spec.inputs.every((item) =>
+      Number.isFinite(Number(suggestion[item.name])) &&
+      Number(suggestion[item.name]) >= Number(item.slider_min) &&
+      Number(suggestion[item.name]) <= Number(item.slider_max)
+    );
+    if (validSuggestion) {
+      const calculations = Array.isArray(data.suggestion_calculations) ? data.suggestion_calculations : [];
+      const calculationLines = calculations.map((calculation) => {
+        const observations = calculation.observations.map((observation) =>
+          `${observation.date} ${signed(Number(observation.value), 1)}%`
+        ).join("; ");
+        const adjustments = [
+          calculation.clipped ? "clipped to slider bounds" : "",
+          calculation.rounded_to_step ? `rounded to ${calculation.step}% slider step` : "",
+        ].filter(Boolean).join(" and ");
+        return `${calculation.label}: ${observations} → mean ${signed(Number(calculation.mean_observed), 1)}% → slider ${signed(Number(calculation.slider_value), 1)}%${adjustments ? ` (${adjustments})` : ""}.`;
+      });
+      if (scenarioStillMatches) {
+        proposal.textContent = calculationLines.length
+          ? `Proposed values, calculated from the cited observations:\n${calculationLines.join("\n")}`
+          : `Suggested settings: ${spec.inputs.map((item) => `${item.label} ${signed(Number(suggestion[item.name]), 1)}%`).join(" · ")}.`;
+        proposal.hidden = false;
+        assistantSuggestionSignature = scenarioSignature();
+        applyBtn.hidden = false;
+      }
+      applyBtn.onclick = () => {
+        if (assistantSuggestionSignature !== scenarioSignature()) {
+          invalidateAssistantSuggestion();
+          return;
+        }
+        assistantSuggestionSignature = null;
+        for (const item of spec.inputs) {
+          document.getElementById(item.name).value = suggestion[item.name];
+          updateSliderLabel(item.name);
+        }
+        applyBtn.hidden = true;
+        proposal.hidden = true;
+        out.textContent += " Applied. Updating the forecast…";
+        runForecast();
+      };
+    }
   } catch (err) {
     out.style.color = "var(--down)";
     out.textContent = `Could not reach the assistant: ${err.message}`;
+    applyBtn.hidden = true;
+    evidenceBox.hidden = true;
+    proposal.hidden = true;
   } finally {
     btn.disabled = false;
   }
