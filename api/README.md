@@ -49,7 +49,7 @@ The assistant receives the 20-day outcomes for historical event analogs from `/e
 Its `/ask` response includes an explanation, verified historical references, and—when it can
 ground a scenario in relevant examples—suggested slider values computed as the mean observed
 20-day DXY, VIX, and GPR changes across those references, clipped and rounded to the slider
-ranges. The response includes the observations and per-slider calculations. The frontend displays
-the references and asks the user before applying suggestions; it invalidates a pending suggestion
-if slider values or the selected historical period changes.
+ranges. The response includes the observations and per-slider calculations; the frontend displays
+each slider action as a separate bullet. It asks the user before applying suggestions and
+invalidates a pending suggestion if slider values or the selected historical period changes.
 Historical outcomes are examples, not proof of causation or guarantees about future prices.

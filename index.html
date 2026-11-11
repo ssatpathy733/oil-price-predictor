@@ -230,7 +230,8 @@
         <div id="ask-response" aria-live="polite" style="margin-top: 12px; font-size: 15px; line-height: 1.55;">
           <p id="ask-answer" style="margin: 0;"></p>
           <p id="ask-evidence" hidden style="margin: 10px 0 0;"></p>
-          <p id="ask-proposal" hidden style="margin: 10px 0 0; white-space: pre-line;"></p>
+          <p id="ask-status" hidden style="margin: 10px 0 0;"></p>
+          <ul id="ask-proposal" hidden style="margin: 10px 0 0; padding-left: 22px;"></ul>
           <button type="button" id="ask-apply" hidden style="margin-top: 10px;">Apply these changes</button>
         </div>
       </section>
@@ -267,6 +268,15 @@ function cssVar(name) {
 // process number display
 const usd = (x) => "$" + x.toFixed(2);
 const signed = (x, digits = 1) => (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x).toFixed(digits);
+const plainAssistantText = (value) => String(value || "")
+  .replace(/\*\*(.*?)\*\*/g, "$1")
+  .replace(/\*(.*?)\*/g, "$1")
+  .replace(/__(.*?)__/g, "$1")
+  .replace(/`([^`]+)`/g, "$1")
+  .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+  .replace(/^\s*[-*]\s+/gm, "")
+  .replace(/\s+/g, " ")
+  .trim();
 
 // show hidden error
 function showError(html) {
@@ -346,10 +356,12 @@ function invalidateAssistantSuggestion() {
   if (!assistantSuggestionSignature || assistantSuggestionSignature === scenarioSignature()) return;
   assistantSuggestionSignature = null;
   const applyBtn = document.getElementById("ask-apply");
+  const status = document.getElementById("ask-status");
   const proposal = document.getElementById("ask-proposal");
   applyBtn.hidden = true;
-  proposal.textContent = "Your slider settings or historical period changed since this suggestion. Ask again to get a fresh suggestion for the current scenario.";
-  proposal.hidden = false;
+  proposal.hidden = true;
+  status.textContent = "Your slider settings or historical period changed since this suggestion. Ask again to get a fresh suggestion for the current scenario.";
+  status.hidden = false;
 }
 
 // ================================================================
@@ -579,6 +591,7 @@ document.getElementById("ask-form").addEventListener("submit", async (e) => {
   const out = document.getElementById("ask-answer");
   const evidenceBox = document.getElementById("ask-evidence");
   const proposal = document.getElementById("ask-proposal");
+  const status = document.getElementById("ask-status");
   const applyBtn = document.getElementById("ask-apply");
 
   const question = input.value.trim();
@@ -594,6 +607,8 @@ document.getElementById("ask-form").addEventListener("submit", async (e) => {
   applyBtn.hidden = true;
   evidenceBox.hidden = true;
   proposal.hidden = true;
+  proposal.replaceChildren();
+  status.hidden = true;
   out.style.color = "var(--muted)";
   out.textContent = "Analyzing historical relationships…";
 
@@ -612,12 +627,12 @@ document.getElementById("ask-form").addEventListener("submit", async (e) => {
     if (!res.ok) throw new Error(`Server error ${res.status}`);
     const data = await res.json();
     out.style.color = "var(--ink)";
-    out.textContent = data.answer;
+    out.textContent = plainAssistantText(data.intro || data.answer);
 
     const scenarioStillMatches = requestedForSignature === scenarioSignature();
     if (!scenarioStillMatches) {
-      proposal.textContent = "Your slider settings or historical period changed while I was preparing this answer. It reflects the scenario from when you asked; ask again before applying a suggestion.";
-      proposal.hidden = false;
+      status.textContent = "Your slider settings or historical period changed while I was preparing this answer. It reflects the scenario from when you asked; ask again before applying a suggestion.";
+      status.hidden = false;
     }
 
     if (Array.isArray(data.evidence) && data.evidence.length) {
@@ -627,6 +642,9 @@ document.getElementById("ask-form").addEventListener("submit", async (e) => {
           `DXY ${signed(Number(event.dxy_20d_pct), 1)}%, VIX ${signed(Number(event.vix_20d_pct), 1)}%, ` +
           `GPR ${signed(Number(event.gpr_20d_pct), 1)}% (${event.model_check})`
         ).join(" · ");
+      evidenceBox.hidden = false;
+    } else {
+      evidenceBox.textContent = "No relevant historical analogs were found, so there are no data-based slider actions to apply.";
       evidenceBox.hidden = false;
     }
 
@@ -638,20 +656,24 @@ document.getElementById("ask-form").addEventListener("submit", async (e) => {
     );
     if (validSuggestion) {
       const calculations = Array.isArray(data.suggestion_calculations) ? data.suggestion_calculations : [];
-      const calculationLines = calculations.map((calculation) => {
-        const observations = calculation.observations.map((observation) =>
-          `${observation.date} ${signed(Number(observation.value), 1)}%`
-        ).join("; ");
-        const adjustments = [
-          calculation.clipped ? "clipped to slider bounds" : "",
-          calculation.rounded_to_step ? `rounded to ${calculation.step}% slider step` : "",
-        ].filter(Boolean).join(" and ");
-        return `${calculation.label}: ${observations} → mean ${signed(Number(calculation.mean_observed), 1)}% → slider ${signed(Number(calculation.slider_value), 1)}%${adjustments ? ` (${adjustments})` : ""}.`;
-      });
       if (scenarioStillMatches) {
-        proposal.textContent = calculationLines.length
-          ? `Proposed values, calculated from the cited observations:\n${calculationLines.join("\n")}`
-          : `Suggested settings: ${spec.inputs.map((item) => `${item.label} ${signed(Number(suggestion[item.name]), 1)}%`).join(" · ")}.`;
+        proposal.replaceChildren();
+        const byName = Object.fromEntries(calculations.map((calculation) => [calculation.name, calculation]));
+        for (const item of spec.inputs) {
+          const calculation = byName[item.name];
+          const li = document.createElement("li");
+          li.style.marginTop = "6px";
+          if (calculation) {
+            const adjustments = [
+              calculation.clipped ? "clipped to slider bounds" : "",
+              calculation.rounded_to_step ? `rounded to ${calculation.step}% step` : "",
+            ].filter(Boolean).join("; ");
+            li.textContent = `${item.label}: set to ${signed(Number(suggestion[item.name]), 1)}%. The cited events averaged ${signed(Number(calculation.mean_observed), 1)}% over 20 trading days${adjustments ? ` (${adjustments})` : ""}.`;
+          } else {
+            li.textContent = `${item.label}: set to ${signed(Number(suggestion[item.name]), 1)}%.`;
+          }
+          proposal.appendChild(li);
+        }
         proposal.hidden = false;
         assistantSuggestionSignature = scenarioSignature();
         applyBtn.hidden = false;
@@ -668,7 +690,8 @@ document.getElementById("ask-form").addEventListener("submit", async (e) => {
         }
         applyBtn.hidden = true;
         proposal.hidden = true;
-        out.textContent += " Applied. Updating the forecast…";
+        status.textContent = "Applied. Updating the forecast…";
+        status.hidden = false;
         runForecast();
       };
     }
@@ -678,6 +701,7 @@ document.getElementById("ask-form").addEventListener("submit", async (e) => {
     applyBtn.hidden = true;
     evidenceBox.hidden = true;
     proposal.hidden = true;
+    status.hidden = true;
   } finally {
     btn.disabled = false;
   }

@@ -83,7 +83,7 @@ class AskRequest(BaseModel):
     p50: float | None = None
 
 class AskResponse(BaseModel):
-    answer: str
+    intro: str
     evidence_dates: List[str] = Field(default_factory=list)
 
 def run_forecast(req: ForecastRequest) -> dict:
@@ -170,13 +170,17 @@ def ask_event(req: AskRequest):
         f"Current dashboard state: Spot price ${req.spot}, 20-day middle estimate ${req.p50}, "
         f"Sliders: DXY {req.dxy_pct:+.1f}%, VIX {req.vix_pct:+.1f}%, GPR {req.gpr_pct:+.1f}%, "
         f"Historical regime: '{req.era}'. "
-        f"Keep the answer concise (3-4 sentences). Explain how the user's event could affect "
-        f"Brent crude, DXY, VIX, and GPR. Select up to three meaningfully relevant historical "
+        f"Write a brief 1-2 sentence plain-text introduction explaining the event's possible "
+        f"market context. Do not use Markdown, bullets, slider names, or slider actions in the "
+        f"introduction; the application will display the calculated slider actions as bullets. "
+        f"Do not propose numerical slider changes. Select up to "
+        f"three meaningfully relevant historical "
         f"analogs by listing their exact dates in evidence_dates. Do not generate slider values; "
         f"the application calculates those from the selected events' observed 20-day changes. "
         f"If the event is too vague or no analog is meaningfully relevant, use an empty "
-        f"evidence_dates list. Do not describe an analog as proof of causation. Explain that historical outcomes are examples, "
-        f"not guaranteed predictions. Historical analogs (20-trading-day observed changes): "
+        f"evidence_dates list. Do not describe an analog as proof of causation or state uncertain "
+        f"market relationships as facts. Historical outcomes are examples, not guaranteed predictions. "
+        f"Historical analogs (20-trading-day observed changes): "
         f"{json.dumps(compact_events, separators=(',', ':'))}"
     )
 
