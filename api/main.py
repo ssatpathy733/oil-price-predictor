@@ -52,7 +52,7 @@ Era = Literal["all", "2010-2019", "2021-2026"]
 load_dotenv()
 
 # client = genai.Client()
-client = genai.Client(vertexai=True)
+client = genai.Client(vertexai=True, api_key = os.getenv("GEMINI_API_KEY"))
 
 class PricePoint(BaseModel):
     date: str = Field(..., examples=["2026-03-12"])
