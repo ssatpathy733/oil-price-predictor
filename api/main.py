@@ -74,6 +74,11 @@ class ForecastRequest(BaseModel):
     as_of: Optional[str] = Field(None, description="Past start date (YYYY-MM-DD), 2010-02-17 or later")
     prices: Optional[List[PricePoint]] = Field(None, description="At least 31 recent daily Brent closes")
 
+class ConversationTurn(BaseModel):
+    """One earlier question/answer from this browser session (Stage 3: G12 remember recent interactions)."""
+    question: str
+    intro: str = ""
+
 class AskRequest(BaseModel):
     question: str
     mode: Literal["general", "business_professional"] = "general"
@@ -83,10 +88,17 @@ class AskRequest(BaseModel):
     era: str
     spot: float | None = None
     p50: float | None = None
+    # Stage 3: the last few turns so follow-ups like "what if it's worse?" make sense. Optional.
+    conversation: List[ConversationTurn] = Field(default_factory=list)
 
 class AskResponse(BaseModel):
     intro: str
     evidence_dates: List[str] = Field(default_factory=list)
+    # Stage 3 fields. Defaults keep older clients and partial LLM output working.
+    plausibility: Literal["typical", "unusual", "extreme"] = "typical"
+    plausibility_note: str = ""
+    clarifying_question: str = ""
+    follow_ups: List[str] = Field(default_factory=list)
 
 def run_forecast(req: ForecastRequest) -> dict:
     """Call the model, turning bad input into a clean 422 instead of a 500."""
@@ -190,13 +202,40 @@ def ask_event(req: AskRequest):
         f"If the event is too vague or no analog is meaningfully relevant, use an empty "
         f"evidence_dates list. Do not describe an analog as proof of causation or state uncertain "
         f"market relationships as facts. Historical outcomes are examples, not guaranteed predictions. "
+        # ---- Stage 3: plausibility disclaimer, clarifying question, follow-ups ----
+        f"Rate how plausible the described event is in plausibility: 'typical' for events that happen "
+        f"every few years or more often (OPEC cuts, rate decisions, regional conflicts); 'unusual' for "
+        f"rare but historically precedented shocks (a major war involving a large producer, a global "
+        f"pandemic, a sovereign default); 'extreme' for events with no real precedent or that are physically "
+        f"or politically far-fetched (every OPEC member stops exporting at once, oil becomes obsolete "
+        f"overnight). For 'unusual' or 'extreme', write one plain-text sentence in plausibility_note saying "
+        f"it is highly unlikely and why the model's estimate is only a rough guide here (few or no similar "
+        f"cases in 2010-2026 data, slider ranges cap at roughly the 1st-99th percentile of history). For "
+        f"'typical' leave plausibility_note empty. Never refuse: the dashboard will still show the model's "
+        f"best estimate. "
+        f"If the user's message is too vague to match any analog (for example 'something bad happens'), "
+        f"leave evidence_dates empty and put one short question in clarifying_question asking for the "
+        f"missing detail (which country, which kind of event, how large); otherwise leave it empty. "
+        f"In follow_ups, give two or three short next questions (under 12 words each) the user could ask, "
+        f"phrased in the user's voice, for example 'What if the cut is twice as large?'. "
+        f"If earlier turns of this conversation are provided, treat the new message as a possible "
+        f"follow-up to them. "
         f"Historical analogs (20-trading-day observed changes): "
         f"{json.dumps(compact_events, separators=(',', ':'))}"
     )
 
+    # Stage 3: include up to 4 recent turns so follow-up questions have context.
+    contents = req.question
+    recent = req.conversation[-4:]
+    if recent:
+        transcript = "\n".join(
+            f"Earlier question: {turn.question[:500]}\nEarlier answer: {turn.intro[:800]}" for turn in recent
+        )
+        contents = f"{transcript}\n\nNew question: {req.question}"
+
     response = client.models.generate_content(
         model="gemini-3.5-flash",
-        contents=req.question,
+        contents=contents,
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
             response_mime_type="application/json",
@@ -206,13 +245,27 @@ def ask_event(req: AskRequest):
     try:
         parsed = response.parsed
         if parsed is None:
-            parsed = AskResponse.model_validate_json(response.text)
+            parsed = AskResponse.model_validate_json(response.text).model_dump()
         elif isinstance(parsed, AskResponse):
             parsed = parsed.model_dump()
         else:
             parsed = AskResponse.model_validate(parsed).model_dump()
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=502, detail="The assistant returned an invalid scenario.") from exc
+
+    # Stage 3: tidy the new fields so the frontend can trust their shape.
+    parsed["follow_ups"] = [
+        str(q).strip() for q in (parsed.get("follow_ups") or []) if str(q).strip()
+    ][:3]
+    parsed["clarifying_question"] = str(parsed.get("clarifying_question") or "").strip()
+    if parsed.get("plausibility") not in ("typical", "unusual", "extreme"):
+        parsed["plausibility"] = "typical"
+    parsed["plausibility_note"] = str(parsed.get("plausibility_note") or "").strip()
+    if parsed["plausibility"] != "typical" and not parsed["plausibility_note"]:
+        parsed["plausibility_note"] = (
+            "This would be a highly unusual event. The model has seen few or no similar cases since 2010, "
+            "so treat the estimate below as a rough guide rather than a prediction."
+        )
 
     known_events = {event["date"]: event for event in historical_events}
     evidence = []
