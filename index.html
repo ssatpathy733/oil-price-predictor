@@ -138,6 +138,8 @@
     cursor: pointer;
   }
   button:hover { border-color: var(--muted); }
+  button:disabled { opacity: 0.45; cursor: default; }
+  button:disabled:hover { border-color: var(--rule); }
   :focus-visible { outline: 2px solid var(--fan-edge); outline-offset: 2px; }
 
   /* chart regions */
@@ -196,6 +198,8 @@
         <div id="eras"></div>
       </fieldset></div>
       <button id="reset" type="button">Reset to no change</button>
+      <button id="undo" type="button">Undo latest change</button>
+      <button id="redo" type="button">Redo latest change</button>
     </aside>
 
     <!-- main graphics, contribution graphics, chatbox placeholder -->
@@ -257,7 +261,9 @@
 // backend address, run in terminal：
 //   uvicorn api.main:app --reload --port 8000
 // ================================================================
+
 const API = "https://oil-price-predictor-9tuu.onrender.com";
+
 const HISTORY_DAYS = 60;   // how many days' historic price is displayed, set to 60
 
 // current state variables
@@ -332,6 +338,8 @@ function buildControls() {
       invalidateAssistantSuggestion();
       scheduleForecast();
     });
+    // "change" fires once when the slider is released, so one drag = one undo step
+    range.addEventListener("change", recordChange);
     updateSliderLabel(input.name);
   }
 
@@ -344,6 +352,7 @@ function buildControls() {
     label.innerHTML = `<input type="radio" name="era" value="${era.key}" ${era.key === currentEra ? "checked" : ""}>${era.label}`;
     label.querySelector("input").addEventListener("change", (e) => {
       currentEra = e.target.value;
+      recordChange();
       invalidateAssistantSuggestion();
       scheduleForecast();
     });
@@ -612,8 +621,77 @@ document.getElementById("reset").addEventListener("click", () => {
     updateSliderLabel(input.name);
   }
   invalidateAssistantSuggestion();
+  recordChange();
   scheduleForecast();
 });
+
+// ================================================================
+// undo / redo history (stores slider values + era; the graph is redrawn from them)
+// ================================================================
+const undoStack = [];
+const redoStack = [];
+let committedState = null;   // the state currently shown on the graph
+const MAX_HISTORY = 50;
+
+function captureState() {
+  return { ...readSliders(), era: currentEra };
+}
+
+function sameState(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+// call once a change is finished (slider released, era picked, reset, apply)
+function recordChange() {
+  const now = captureState();
+  if (committedState && !sameState(now, committedState)) {
+    undoStack.push(committedState);
+    if (undoStack.length > MAX_HISTORY) undoStack.shift();
+    redoStack.length = 0;
+  }
+  committedState = now;
+  updateUndoRedoButtons();
+}
+
+// put a saved state back on the controls and redraw (does not record history)
+function applyState(state) {
+  for (const input of spec.inputs) {
+    document.getElementById(input.name).value = state[input.name];
+    updateSliderLabel(input.name);
+  }
+  currentEra = state.era;
+  const radio = document.querySelector(`input[name="era"][value="${state.era}"]`);
+  if (radio) radio.checked = true;
+  committedState = state;
+  invalidateAssistantSuggestion();
+  updateUndoRedoButtons();
+  runForecast();
+}
+
+function updateUndoRedoButtons() {
+  document.getElementById("undo").disabled = undoStack.length === 0;
+  document.getElementById("redo").disabled = redoStack.length === 0;
+}
+
+// ================================================================
+// undo button
+// ================================================================
+document.getElementById("undo").addEventListener("click", () => {
+  if (!undoStack.length) return;
+  redoStack.push(committedState);
+  applyState(undoStack.pop());
+});
+
+// ================================================================
+// redo button
+// ================================================================
+document.getElementById("redo").addEventListener("click", () => {
+  if (!redoStack.length) return;
+  undoStack.push(committedState);
+  applyState(redoStack.pop());
+});
+
+updateUndoRedoButtons();
 
 // ================================================================
 // load
@@ -632,6 +710,8 @@ async function start() {
     return;
   }
   buildControls();
+  committedState = captureState();   // starting point of the undo history
+  updateUndoRedoButtons();
   await computeYRange();
   await runForecast();
 }
@@ -741,6 +821,7 @@ document.getElementById("ask-form").addEventListener("submit", async (e) => {
           document.getElementById(item.name).value = suggestion[item.name];
           updateSliderLabel(item.name);
         }
+        recordChange();
         applyBtn.hidden = true;
         proposal.hidden = true;
         status.textContent = "Applied. Updating the forecast…";
