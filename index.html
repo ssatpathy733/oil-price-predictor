@@ -168,6 +168,55 @@
   .mode-control button { margin: 0; padding: 5px 10px; font-size: 14px; }
   .mode-control button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--panel); }
 
+  /* ---------- Stage 3: preview, rarity, starters, follow-ups, log ---------- */
+  :root { --preview: #3b6fb6; --preview-fill: rgba(59, 111, 182, 0.16); --rare-bg: #e8eefb; --rare-ink: #23457a; }
+  @media (prefers-color-scheme: dark) {
+    :root { --preview: #8fb4ec; --preview-fill: rgba(143, 180, 236, 0.18); --rare-bg: #1d2b44; --rare-ink: #c4d6f5; }
+  }
+  .notice.rare { background: var(--rare-bg); color: var(--rare-ink); }
+  .notice.extreme { background: var(--warn-bg); color: var(--warn-ink); border-left: 4px solid var(--fan-edge); }
+  .notice strong { font-weight: 600; }
+  .notice ul { margin: 4px 0 0; padding-left: 20px; }
+  .assistant .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 12px; }
+  .assistant .chips-label { font-size: 13px; color: var(--muted); margin: 0; }
+  .chip {
+    margin: 0; padding: 5px 11px; font-size: 14px; border-radius: 999px;
+    border: 1px solid var(--rule); background: var(--bg); color: var(--ink); text-align: left;
+  }
+  .chip:hover { border-color: var(--fan-edge); }
+  .preview-toggle { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--muted); margin: 0 0 10px; cursor: pointer; }
+  .assistant .preview-toggle input { width: auto; padding: 0; margin: 0; accent-color: var(--preview); }
+  .preview-card {
+    margin-top: 12px; padding: 12px 14px; border-radius: 4px;
+    border: 1px dashed var(--preview); background: var(--preview-fill);
+  }
+  .preview-card h3 { font-family: "Barlow Condensed", "Arial Narrow", sans-serif; font-size: 17px; font-weight: 600; margin: 0 0 6px; color: var(--preview); }
+  .preview-card ul { margin: 0; padding-left: 20px; }
+  .preview-card li { margin-top: 4px; }
+  .action-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .action-row button { margin-top: 0; }
+  button.primary { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  button.primary:hover { opacity: 0.9; }
+  .clarify { margin: 10px 0 0; padding: 8px 12px; border-left: 3px solid var(--fan-edge); background: var(--bg); }
+  .feedback { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 14px; color: var(--muted); }
+  .feedback button { margin: 0; padding: 3px 10px; font-size: 14px; }
+  .feedback button[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  details.log { margin-top: 16px; border-top: 1px solid var(--rule); padding-top: 12px; }
+  details.log summary { cursor: pointer; font-weight: 600; }
+  .log-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; max-height: 360px; overflow-y: auto; }
+  .log-item { border: 1px solid var(--rule); border-radius: 4px; padding: 8px 10px; font-size: 14px; }
+  .log-item .log-q { font-weight: 600; }
+  .log-item .log-meta { color: var(--muted); font-size: 13px; }
+  .log-item .log-a { margin: 4px 0 0; }
+  .log-item .action-row button { padding: 3px 9px; font-size: 13px; margin-top: 0; }
+  .badge { display: inline-block; padding: 0 6px; border-radius: 3px; font-size: 12px; background: var(--bg); border: 1px solid var(--rule); }
+  .badge.applied { border-color: var(--up); color: var(--up); }
+  .badge.dismissed { border-color: var(--muted); }
+  .badge.unusual, .badge.extreme { border-color: var(--fan-edge); color: var(--warn-ink); }
+  .log-tools { display: flex; gap: 8px; margin-top: 10px; }
+  .log-tools button { margin: 0; padding: 4px 10px; font-size: 13px; }
+  .log-empty { color: var(--muted); font-size: 14px; margin: 8px 0 0; }
+
   footer { margin-top: 26px; font-size: 13px; color: var(--muted); max-width: 80ch; }
 
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -186,6 +235,8 @@
   <div id="error" class="notice error" hidden></div>
   <!-- if return warning display this -->
   <div id="warnings" class="notice warn" hidden></div>
+  <!-- Stage 3: shown whenever the current slider scenario is rare in 2010–2026 history -->
+  <div id="rarity" class="notice rare" role="status" hidden></div>
 
   <div class="layout">
 
@@ -211,6 +262,7 @@
           <span><span class="swatch" style="background:var(--history)"></span>Actual price</span>
           <span><span class="swatch" style="background:var(--median)"></span>Middle estimate (p50)</span>
           <span><span class="swatch" style="background:var(--fan);border:1px solid var(--fan-edge)"></span>Model range (p10 to p90)</span>
+          <span id="preview-legend" hidden><span class="swatch" style="background:var(--preview-fill);border:1px dashed var(--preview)"></span>Preview: assistant's suggestion (not applied)</span>
         </div>
       </section>
 
@@ -231,6 +283,14 @@
         <p style="margin: 0 0 12px; color: var(--muted); font-size: 14px;">
           The assistant can compare an event with up to three historical examples and suggest DXY, VIX, and GPR slider values from their observed 20-day changes. It does not verify live events. Its analog matches and explanations can be wrong; no measured accuracy rate is available for them. Suggestions are illustrative scenarios, not probabilities or guarantees.
         </p>
+        <label class="preview-toggle">
+          <input type="checkbox" id="preview-toggle" checked>
+          Preview suggested changes on the chart before applying them
+        </label>
+        <div id="ask-starters">
+          <p class="chips-label">Not sure where to start? Try one of these:</p>
+          <div class="chips" id="starter-chips"></div>
+        </div>
         <form id="ask-form" style="display: flex; gap: 8px;">
           <input 
             type="text" 
@@ -242,12 +302,42 @@
           <button type="submit" id="ask-btn" style="margin-top: 0; white-space: nowrap;">Ask</button>
         </form>
         <div id="ask-response" aria-live="polite" style="margin-top: 12px; font-size: 15px; line-height: 1.55;">
+          <div id="ask-plausibility" class="notice extreme" hidden style="margin: 0 0 10px;"></div>
           <p id="ask-answer" style="margin: 0;"></p>
+          <p id="ask-clarify" class="clarify" hidden></p>
           <p id="ask-evidence" hidden style="margin: 10px 0 0;"></p>
           <p id="ask-status" hidden style="margin: 10px 0 0;"></p>
           <ul id="ask-proposal" hidden style="margin: 10px 0 0; padding-left: 22px;"></ul>
-          <button type="button" id="ask-apply" hidden style="margin-top: 10px;">Apply these changes</button>
+          <!-- Stage 3: what the chart would do if the suggestion were applied -->
+          <div id="ask-preview" class="preview-card" hidden>
+            <h3>If you apply this, the chart would change like this</h3>
+            <ul id="ask-preview-list"></ul>
+          </div>
+          <div class="action-row">
+            <button type="button" id="ask-apply" class="primary" hidden>Apply these changes</button>
+            <button type="button" id="ask-dismiss" hidden>Dismiss suggestion</button>
+          </div>
+          <div id="ask-followups" hidden>
+            <p class="chips-label" style="margin-top: 12px;">You could ask next:</p>
+            <div class="chips" id="followup-chips"></div>
+          </div>
+          <div class="feedback" id="ask-feedback" hidden>
+            <span>Was this answer helpful?</span>
+            <button type="button" data-feedback="up" aria-pressed="false">👍 Yes</button>
+            <button type="button" data-feedback="down" aria-pressed="false">👎 No</button>
+          </div>
         </div>
+
+        <!-- Stage 3: session history / log -->
+        <details class="log" id="ask-log">
+          <summary>Your question history (<span id="log-count">0</span>)</summary>
+          <p class="log-empty" id="log-empty">Questions you ask appear here, so you can compare answers or go back to an earlier scenario. They are saved only in this browser.</p>
+          <ol class="log-list" id="log-list"></ol>
+          <div class="log-tools">
+            <button type="button" id="log-export">Download log (JSON)</button>
+            <button type="button" id="log-clear">Clear history</button>
+          </div>
+        </details>
       </section>
       
     </div>
@@ -261,9 +351,8 @@
 // backend address, run in terminal：
 //   uvicorn api.main:app --reload --port 8000
 // ================================================================
-
-const API = "https://oil-price-predictor-9tuu.onrender.com";
-
+// Add ?api=http://localhost:8000 to the page URL to test against a local backend.
+const API = new URLSearchParams(location.search).get("api") || "https://oil-price-predictor-9tuu.onrender.com";
 const HISTORY_DAYS = 60;   // how many days' historic price is displayed, set to 60
 
 // current state variables
@@ -421,6 +510,8 @@ function invalidateAssistantSuggestion() {
   const proposal = document.getElementById("ask-proposal");
   applyBtn.hidden = true;
   proposal.hidden = true;
+  clearPreview();
+  markPendingOutcome("expired");
   status.textContent = "Your response mode, slider settings, or historical period changed since this suggestion. Ask again to get a fresh response for the current scenario.";
   status.hidden = false;
 }
@@ -487,6 +578,7 @@ function render(r) {
 
   drawMainChart(r.path);
   drawContribChart(r);
+  renderRarity(r.inputs_requested);
 }
 
 // main graph: historic line + p10/p50/p90 interval
@@ -513,6 +605,11 @@ function drawMainChart(path) {
           { label: "p90", data: p90, borderColor: cssVar("--fan-edge"), borderWidth: 1, borderDash: [4, 3], pointRadius: 0,
             fill: "-1", backgroundColor: cssVar("--fan") },
           { label: "p50", data: p50, borderColor: cssVar("--median"), borderWidth: 2.5, pointRadius: 0 },
+          // Stage 3 preview overlay (datasets 4-6), empty until the assistant suggests something.
+          { label: "Preview p10", data: [], borderColor: cssVar("--preview"), borderWidth: 1, borderDash: [2, 3], pointRadius: 0 },
+          { label: "Preview p90", data: [], borderColor: cssVar("--preview"), borderWidth: 1, borderDash: [2, 3], pointRadius: 0,
+            fill: "-1", backgroundColor: cssVar("--preview-fill") },
+          { label: "Preview p50", data: [], borderColor: cssVar("--preview"), borderWidth: 2.5, borderDash: [6, 4], pointRadius: 0 },
         ],
       },
       options: {
@@ -716,33 +813,365 @@ async function start() {
   await runForecast();
 }
 
+// ================================================================
+// STAGE 3: assistant transparency, previews, rarity, history
+// Guideline refs are Amershi et al. (2019) "Guidelines for Human-AI Interaction".
+// ================================================================
+
+// ---------- rarity of a scenario (G2, G4: how unusual is what I'm looking at?) ----------
+// Each slider has historical percentiles of real 20-day moves (from /spec). We place the value
+// inside them by linear interpolation to say "bigger than about N% of 20-day moves since 2010".
+const PCT_KEYS = [1, 5, 25, 50, 75, 95, 99];
+
+function historicalRank(value, input) {
+  const hp = input.historical_percentiles;
+  const pts = PCT_KEYS.map((p) => [hp["p" + p], p]);
+  if (value <= pts[0][0]) return 1;
+  if (value >= pts[pts.length - 1][0]) return 99;
+  for (let i = 1; i < pts.length; i++) {
+    const [x0, p0] = pts[i - 1], [x1, p1] = pts[i];
+    if (value <= x1) return x1 === x0 ? p1 : p0 + ((value - x0) / (x1 - x0)) * (p1 - p0);
+  }
+  return 50;
+}
+
+// values: {dxy_pct|dxy: number, ...}. Returns {level: "typical"|"rare"|"extreme", items:[...]}
+function assessScenario(values) {
+  const items = [];
+  for (const input of spec.inputs) {
+    const short = input.name.replace("_pct", "");
+    const v = Number(values[input.name] ?? values[short] ?? 0);
+    if (!v) continue;
+    const hp = input.historical_percentiles;
+    let level = "typical";
+    if (v < hp.p1 || v > hp.p99) level = "extreme";
+    else if (v < hp.p5 || v > hp.p95) level = "rare";
+    if (level === "typical") continue;
+    const rank = historicalRank(v, input);
+    const share = Math.min(99, v > 0 ? Math.round(rank) : Math.round(100 - rank));
+    const shareText = level === "extreme" ? "over 99%" : `about ${share}%`;
+    items.push({
+      label: input.label, level,
+      text: `${input.label} ${signed(v, 1)}%: a bigger ${v > 0 ? "rise" : "fall"} than ${shareText} of 20-day periods since 2010.`,
+    });
+  }
+  let level = "typical";
+  if (items.some((i) => i.level === "extreme") || items.length >= 2) level = "extreme";
+  else if (items.length) level = "rare";
+  return { level, items };
+}
+
+function rarityHeadline(assessment) {
+  if (assessment.level === "extreme") {
+    return assessment.items.length >= 2 && !assessment.items.some((i) => i.level === "extreme")
+      ? "Highly unlikely combination: several factors are moving by rare amounts at the same time."
+      : "Highly unlikely scenario: at least one factor is at the edge of what history has shown.";
+  }
+  return "Unusual scenario: this move is rare in 2010–2026 history.";
+}
+
+function renderRarity(values) {
+  const box = document.getElementById("rarity");
+  if (!spec) return;
+  const a = assessScenario(values);
+  if (a.level === "typical") { box.hidden = true; box.replaceChildren(); return; }
+  box.className = `notice ${a.level === "extreme" ? "extreme" : "rare"}`;
+  const strong = document.createElement("strong");
+  strong.textContent = rarityHeadline(a) + " ";
+  const tail = document.createElement("span");
+  tail.textContent = "The chart still shows the model's best estimate, but it has seen very few periods like this, so read the numbers as a rough guide.";
+  const ul = document.createElement("ul");
+  for (const item of a.items) {
+    const li = document.createElement("li");
+    li.textContent = item.text;
+    ul.appendChild(li);
+  }
+  box.replaceChildren(strong, tail, ul);
+  box.hidden = false;
+}
+
+// ---------- single place that changes the scenario (hook for undo/redo, Stage 2) ----------
+// Every assistant-driven change goes through here. It records an undo step (Stage 2) and fires a
+// "scenario:applied" event with the before/after state for anything else that wants to listen.
+function currentScenario() {
+  return { sliders: readSliders(), era: currentEra };
+}
+
+function applyScenario(next, source) {
+  const before = currentScenario();
+  for (const item of spec.inputs) {
+    if (next.sliders && next.sliders[item.name] !== undefined) {
+      document.getElementById(item.name).value = next.sliders[item.name];
+      updateSliderLabel(item.name);
+    }
+  }
+  if (next.era && next.era !== currentEra) {
+    currentEra = next.era;
+    const radio = document.querySelector(`input[name="era"][value="${CSS.escape(next.era)}"]`);
+    if (radio) radio.checked = true;
+  }
+  recordChange();   // Stage 2 undo/redo: makes Apply and history Restore undoable
+  document.dispatchEvent(new CustomEvent("scenario:applied", { detail: { before, after: currentScenario(), source } }));
+  runForecast();
+}
+
+// ---------- preview overlay on the main chart (G16: convey consequences before acting) ----------
+let previewResult = null;
+
+function clearPreview() {
+  previewResult = null;
+  document.getElementById("ask-preview").hidden = true;
+  document.getElementById("preview-legend").hidden = true;
+  if (mainChart) {
+    for (const i of [4, 5, 6]) mainChart.data.datasets[i].data = [];
+    mainChart.update();
+  }
+}
+
+function drawPreview(path) {
+  if (!mainChart) return;
+  const pad = new Array(history.length - 1).fill(null);
+  mainChart.data.datasets[4].data = pad.concat(path.map((p) => p.p10));
+  mainChart.data.datasets[5].data = pad.concat(path.map((p) => p.p90));
+  mainChart.data.datasets[6].data = pad.concat(path.map((p) => p.p50));
+  mainChart.update();
+  document.getElementById("preview-legend").hidden = false;
+}
+
+// Plain-language description of how the chart would move from `cur` to `next`.
+function explainChange(cur, next) {
+  const lines = [];
+  const d50 = next.summary.p50 - cur.summary.p50;
+  lines.push(Math.abs(d50) < 0.05
+    ? `The middle estimate would stay about the same, at ${usd(next.summary.p50)}.`
+    : `The middle estimate would move ${d50 > 0 ? "up" : "down"} by ${usd(Math.abs(d50))}, from ${usd(cur.summary.p50)} to ${usd(next.summary.p50)} (the dashed blue line).`);
+
+  const w0 = cur.summary.p90 - cur.summary.p10, w1 = next.summary.p90 - next.summary.p10;
+  const dw = w1 - w0;
+  lines.push(Math.abs(dw) < 0.1
+    ? `The range of likely outcomes would stay about as wide (${usd(next.summary.p10)} to ${usd(next.summary.p90)}).`
+    : `The range would get ${dw > 0 ? "wider" : "narrower"} by ${usd(Math.abs(dw))}: ${usd(next.summary.p10)} to ${usd(next.summary.p90)} instead of ${usd(cur.summary.p10)} to ${usd(cur.summary.p90)}${dw > 0 ? ", meaning more uncertainty" : ", meaning less uncertainty"}.`);
+
+  const contribs = spec.inputs.map((i) => ({ label: i.label, usd: next.contributions[i.name.replace("_pct", "")].usd }));
+  const top = contribs.reduce((a, b) => (Math.abs(b.usd) > Math.abs(a.usd) ? b : a));
+  if (Math.abs(top.usd) >= 0.05) {
+    lines.push(`The biggest push would come from ${top.label}, ${top.usd > 0 ? "adding" : "subtracting"} about ${usd(Math.abs(top.usd))}.`);
+  }
+  const rare = assessScenario(next.inputs_requested);
+  if (rare.level !== "typical") lines.push(rarityHeadline(rare) + " Read the preview as a rough guide.");
+  return lines;
+}
+
+// ---------- history log (G12 remember recent interactions; also pilot-test logging) ----------
+const LOG_KEY = "oilPredictorAssistantLog";
+const LOG_MAX = 50;
+const SESSION_ID = Math.random().toString(36).slice(2, 10);
+let assistantLog = [];
+let activeEntryId = null;
+try { assistantLog = JSON.parse(localStorage.getItem(LOG_KEY) || "[]"); if (!Array.isArray(assistantLog)) assistantLog = []; }
+catch (_) { assistantLog = []; }
+
+function saveLog() {
+  try { localStorage.setItem(LOG_KEY, JSON.stringify(assistantLog.slice(-LOG_MAX))); } catch (_) { /* memory only */ }
+}
+
+function findEntry(id) { return assistantLog.find((e) => e.id === id); }
+
+function updateEntry(id, patch) {
+  const entry = findEntry(id);
+  if (!entry) return;
+  Object.assign(entry, patch);
+  saveLog();
+  renderLog();
+}
+
+function markPendingOutcome(outcome) {
+  const entry = activeEntryId && findEntry(activeEntryId);
+  if (entry && entry.outcome === "suggested") updateEntry(entry.id, { outcome });
+}
+
+const OUTCOME_TEXT = {
+  suggested: "suggestion pending", applied: "applied", dismissed: "dismissed",
+  expired: "suggestion expired", none: "no slider changes", error: "error",
+};
+
+function renderLog() {
+  const list = document.getElementById("log-list");
+  document.getElementById("log-count").textContent = assistantLog.length;
+  document.getElementById("log-empty").hidden = assistantLog.length > 0;
+  list.replaceChildren();
+  for (const entry of [...assistantLog].reverse()) {
+    const li = document.createElement("li");
+    li.className = "log-item";
+    const q = document.createElement("div");
+    q.className = "log-q";
+    q.textContent = entry.question;
+    const meta = document.createElement("div");
+    meta.className = "log-meta";
+    const time = new Date(entry.time).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    meta.append(`${time} · ${entry.mode === "general" ? "General" : "Business Professional"} · `);
+    const badge = document.createElement("span");
+    badge.className = `badge ${entry.outcome}`;
+    badge.textContent = OUTCOME_TEXT[entry.outcome] || entry.outcome;
+    meta.appendChild(badge);
+    if (entry.plausibility && entry.plausibility !== "typical") {
+      const pb = document.createElement("span");
+      pb.className = `badge ${entry.plausibility}`;
+      pb.textContent = entry.plausibility === "extreme" ? "highly unlikely event" : "unusual event";
+      meta.append(" ", pb);
+    }
+    if (entry.feedback) meta.append(` · rated ${entry.feedback === "up" ? "👍" : "👎"}`);
+    const a = document.createElement("p");
+    a.className = "log-a";
+    a.textContent = entry.intro || "";
+    const row = document.createElement("div");
+    row.className = "action-row";
+    const restoreTarget = entry.outcome === "applied" && entry.scenarioAfter ? entry.scenarioAfter : entry.scenarioBefore;
+    if (restoreTarget) {
+      const restore = document.createElement("button");
+      restore.type = "button";
+      restore.textContent = entry.outcome === "applied" ? "Restore the applied scenario" : "Restore sliders from then";
+      restore.addEventListener("click", () => {
+        if (assistantSuggestionSignature) {
+          assistantSuggestionSignature = null;
+          markPendingOutcome("expired");
+          for (const id of ["ask-apply", "ask-dismiss", "ask-proposal"]) document.getElementById(id).hidden = true;
+        }
+        clearPreview();
+        applyScenario(restoreTarget, "history-restore");
+        const status = document.getElementById("ask-status");
+        status.textContent = `Restored the sliders from “${entry.question}”.`;
+        status.hidden = false;
+      });
+      row.appendChild(restore);
+    }
+    const again = document.createElement("button");
+    again.type = "button";
+    again.textContent = "Ask again";
+    again.addEventListener("click", () => askQuestion(entry.question));
+    row.appendChild(again);
+    li.append(q, meta, a, row);
+    list.appendChild(li);
+  }
+}
+
+document.getElementById("log-export").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify({ exported: new Date().toISOString(), entries: assistantLog }, null, 2)], { type: "application/json" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `assistant-log-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+});
+
+let clearArmed = null;
+document.getElementById("log-clear").addEventListener("click", (e) => {
+  const btn = e.currentTarget;
+  if (!clearArmed) {
+    btn.textContent = "Click again to clear";
+    clearArmed = setTimeout(() => { btn.textContent = "Clear history"; clearArmed = null; }, 3000);
+    return;
+  }
+  clearTimeout(clearArmed); clearArmed = null;
+  btn.textContent = "Clear history";
+  assistantLog = []; activeEntryId = null;
+  saveLog(); renderLog();
+});
+
+// ---------- starting points and follow-ups (G1: make clear what the system can do) ----------
+const STARTERS = [
+  "OPEC announces a surprise production cut",
+  "The US dollar strengthens sharply after a Fed rate hike",
+  "A war breaks out in a major oil-producing region",
+  "Markets calm down after a financial crisis",
+];
+
+function makeChip(text, container) {
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = "chip";
+  chip.textContent = text;
+  chip.addEventListener("click", () => askQuestion(text));
+  container.appendChild(chip);
+}
+
+function renderStarters() {
+  const box = document.getElementById("starter-chips");
+  box.replaceChildren();
+  STARTERS.forEach((s) => makeChip(s, box));
+}
+
+function askQuestion(text) {
+  document.getElementById("ask-input").value = text;
+  document.getElementById("ask-form").requestSubmit();
+}
+
+// ---------- feedback (G15: encourage granular feedback) ----------
+document.querySelectorAll("#ask-feedback button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const entry = activeEntryId && findEntry(activeEntryId);
+    const value = btn.dataset.feedback;
+    const next = entry && entry.feedback === value ? null : value;
+    document.querySelectorAll("#ask-feedback button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.feedback === next)));
+    if (entry) updateEntry(entry.id, { feedback: next });
+  });
+});
+
+function resetFeedback() {
+  document.querySelectorAll("#ask-feedback button").forEach((b) => b.setAttribute("aria-pressed", "false"));
+}
+
+// ---------- the ask flow ----------
 document.getElementById("ask-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const input = document.getElementById("ask-input");
   const btn = document.getElementById("ask-btn");
   const out = document.getElementById("ask-answer");
+  const plausBox = document.getElementById("ask-plausibility");
+  const clarifyBox = document.getElementById("ask-clarify");
   const evidenceBox = document.getElementById("ask-evidence");
   const proposal = document.getElementById("ask-proposal");
   const status = document.getElementById("ask-status");
   const applyBtn = document.getElementById("ask-apply");
+  const dismissBtn = document.getElementById("ask-dismiss");
+  const previewBox = document.getElementById("ask-preview");
+  const previewList = document.getElementById("ask-preview-list");
+  const followBox = document.getElementById("ask-followups");
+  const feedbackBox = document.getElementById("ask-feedback");
 
   const question = input.value.trim();
-  if (!question) return;
+  if (!question || btn.disabled) return;
   if (!spec) {
     out.textContent = "The scenario controls are still loading. Please try again shortly.";
     return;
   }
   const requestedForSignature = scenarioSignature();
+  const scenarioBefore = currentScenario();
+  const wantPreview = document.getElementById("preview-toggle").checked;
 
+  // Recent turns from this browser session only, so old days don't leak into new answers.
+  const conversation = assistantLog
+    .filter((entry) => entry.session === SESSION_ID && entry.intro)
+    .slice(-4)
+    .map((entry) => ({ question: entry.question, intro: entry.intro }));
+
+  markPendingOutcome("expired");
   btn.disabled = true;
   assistantSuggestionSignature = null;
-  applyBtn.hidden = true;
-  evidenceBox.hidden = true;
-  proposal.hidden = true;
+  for (const el of [applyBtn, dismissBtn, evidenceBox, proposal, status, plausBox, clarifyBox, followBox, feedbackBox]) el.hidden = true;
   proposal.replaceChildren();
-  status.hidden = true;
+  clearPreview();
+  resetFeedback();
+  document.getElementById("ask-starters").hidden = true;
   out.style.color = "var(--muted)";
   out.textContent = "Analyzing historical relationships…";
+
+  const entry = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    session: SESSION_ID, time: new Date().toISOString(), mode: assistantMode, question,
+    intro: "", plausibility: "typical", evidence: [], suggestion: null,
+    scenarioBefore, scenarioAfter: null, outcome: "none", feedback: null,
+  };
 
   try {
     const res = await fetch(`${API}/ask`, {
@@ -755,12 +1184,33 @@ document.getElementById("ask-form").addEventListener("submit", async (e) => {
         era: lastResult ? lastResult.era_label : currentEra,
         spot: lastResult ? lastResult.spot : null,
         p50: lastResult ? lastResult.summary.p50 : null,
+        conversation,
       }),
     });
     if (!res.ok) throw new Error(`Server error ${res.status}`);
     const data = await res.json();
     out.style.color = "var(--ink)";
     out.textContent = plainAssistantText(data.intro || data.answer);
+    entry.intro = out.textContent;
+    entry.plausibility = data.plausibility || "typical";
+
+    // Highly-unlikely-event disclaimer from the LLM (complements the slider-based rarity banner).
+    if (data.plausibility && data.plausibility !== "typical") {
+      plausBox.className = `notice ${data.plausibility === "extreme" ? "extreme" : "rare"}`;
+      const strong = document.createElement("strong");
+      strong.textContent = data.plausibility === "extreme" ? "Highly unlikely event. " : "Unusual event. ";
+      plausBox.replaceChildren(strong, document.createTextNode(plainAssistantText(data.plausibility_note) +
+        " The assistant still gives its best estimate below."));
+      plausBox.hidden = false;
+    }
+
+    // G10: ask for detail instead of guessing when the question is vague.
+    if (data.clarifying_question) {
+      clarifyBox.textContent = `To give a better answer: ${plainAssistantText(data.clarifying_question)}`;
+      clarifyBox.hidden = false;
+      input.value = "";
+      input.focus();
+    }
 
     const scenarioStillMatches = requestedForSignature === scenarioSignature();
     if (!scenarioStillMatches) {
@@ -769,6 +1219,7 @@ document.getElementById("ask-form").addEventListener("submit", async (e) => {
     }
 
     if (Array.isArray(data.evidence) && data.evidence.length) {
+      entry.evidence = data.evidence.map((ev) => ({ date: ev.date, description: ev.description }));
       evidenceBox.textContent = "Historical analogs (observed changes over the following 20 trading days; examples, not causal proof): " +
         data.evidence.map((event) =>
           `${event.date} ${event.description}: Brent ${signed(Number(event.brent_20d_pct), 1)}%, ` +
@@ -776,7 +1227,7 @@ document.getElementById("ask-form").addEventListener("submit", async (e) => {
           `GPR ${signed(Number(event.gpr_20d_pct), 1)}% (${event.model_check})`
         ).join(" · ");
       evidenceBox.hidden = false;
-    } else {
+    } else if (!data.clarifying_question) {
       evidenceBox.textContent = "No relevant historical analogs were found, so there are no data-based slider actions to apply.";
       evidenceBox.hidden = false;
     }
@@ -787,59 +1238,101 @@ document.getElementById("ask-form").addEventListener("submit", async (e) => {
       Number(suggestion[item.name]) >= Number(item.slider_min) &&
       Number(suggestion[item.name]) <= Number(item.slider_max)
     );
-    if (validSuggestion) {
+    if (validSuggestion && scenarioStillMatches) {
+      entry.suggestion = { ...suggestion };
+      entry.outcome = "suggested";
       const calculations = Array.isArray(data.suggestion_calculations) ? data.suggestion_calculations : [];
-      if (scenarioStillMatches) {
-        proposal.replaceChildren();
-        const byName = Object.fromEntries(calculations.map((calculation) => [calculation.name, calculation]));
-        for (const item of spec.inputs) {
-          const calculation = byName[item.name];
-          const li = document.createElement("li");
-          li.style.marginTop = "6px";
-          if (calculation) {
-            const adjustments = [
-              calculation.clipped ? "clipped to slider bounds" : "",
-              calculation.rounded_to_step ? `rounded to ${calculation.step}% step` : "",
-            ].filter(Boolean).join("; ");
-            li.textContent = `${item.label}: set to ${signed(Number(suggestion[item.name]), 1)}%. The cited events averaged ${signed(Number(calculation.mean_observed), 1)}% over 20 trading days${adjustments ? ` (${adjustments})` : ""}.`;
-          } else {
-            li.textContent = `${item.label}: set to ${signed(Number(suggestion[item.name]), 1)}%.`;
-          }
-          proposal.appendChild(li);
+      const byName = Object.fromEntries(calculations.map((calculation) => [calculation.name, calculation]));
+      for (const item of spec.inputs) {
+        const calculation = byName[item.name];
+        const li = document.createElement("li");
+        li.style.marginTop = "6px";
+        if (calculation) {
+          const adjustments = [
+            calculation.clipped ? "clipped to slider bounds" : "",
+            calculation.rounded_to_step ? `rounded to ${calculation.step}% step` : "",
+          ].filter(Boolean).join("; ");
+          li.textContent = `${item.label}: set to ${signed(Number(suggestion[item.name]), 1)}%. The cited events averaged ${signed(Number(calculation.mean_observed), 1)}% over 20 trading days${adjustments ? ` (${adjustments})` : ""}.`;
+        } else {
+          li.textContent = `${item.label}: set to ${signed(Number(suggestion[item.name]), 1)}%.`;
         }
-        proposal.hidden = false;
-        assistantSuggestionSignature = scenarioSignature();
-        applyBtn.hidden = false;
+        proposal.appendChild(li);
       }
+      proposal.hidden = false;
+
+      // Preview: run the model on the suggestion without touching the sliders.
+      if (wantPreview && lastResult) {
+        try {
+          const preview = await postForecast({ ...suggestion, era: currentEra });
+          if (requestedForSignature === scenarioSignature()) {
+            previewResult = preview;
+            drawPreview(preview.path);
+            previewList.replaceChildren(...explainChange(lastResult, preview).map((line) => {
+              const li = document.createElement("li"); li.textContent = line; return li;
+            }));
+            previewBox.hidden = false;
+          }
+        } catch (_) {
+          status.textContent = "Couldn't draw a preview of this suggestion, but you can still apply it.";
+          status.hidden = false;
+        }
+      }
+
+      assistantSuggestionSignature = scenarioSignature();
+      applyBtn.hidden = false;
+      dismissBtn.hidden = false;
       applyBtn.onclick = () => {
         if (assistantSuggestionSignature !== scenarioSignature()) {
           invalidateAssistantSuggestion();
           return;
         }
         assistantSuggestionSignature = null;
-        for (const item of spec.inputs) {
-          document.getElementById(item.name).value = suggestion[item.name];
-          updateSliderLabel(item.name);
-        }
-        recordChange();
+        clearPreview();
+        applyScenario({ sliders: suggestion }, "assistant");
+        updateEntry(entry.id, { outcome: "applied", scenarioAfter: currentScenario() });
         applyBtn.hidden = true;
+        dismissBtn.hidden = true;
         proposal.hidden = true;
         status.textContent = "Applied. Updating the forecast…";
         status.hidden = false;
-        runForecast();
+      };
+      dismissBtn.onclick = () => {
+        assistantSuggestionSignature = null;
+        clearPreview();
+        updateEntry(entry.id, { outcome: "dismissed" });
+        applyBtn.hidden = true;
+        dismissBtn.hidden = true;
+        proposal.hidden = true;
+        status.textContent = "Suggestion dismissed. Your sliders are unchanged.";
+        status.hidden = false;
       };
     }
+
+    const followUps = Array.isArray(data.follow_ups) ? data.follow_ups.slice(0, 3) : [];
+    const chips = document.getElementById("followup-chips");
+    chips.replaceChildren();
+    followUps.forEach((q) => makeChip(plainAssistantText(q), chips));
+    followBox.hidden = followUps.length === 0;
+    feedbackBox.hidden = false;
   } catch (err) {
     out.style.color = "var(--down)";
     out.textContent = `Could not reach the assistant: ${err.message}`;
-    applyBtn.hidden = true;
-    evidenceBox.hidden = true;
-    proposal.hidden = true;
-    status.hidden = true;
+    entry.outcome = "error";
+    entry.intro = out.textContent;
+    for (const el of [applyBtn, dismissBtn, evidenceBox, proposal, status]) el.hidden = true;
+    clearPreview();
   } finally {
+    assistantLog.push(entry);
+    if (assistantLog.length > LOG_MAX) assistantLog = assistantLog.slice(-LOG_MAX);
+    activeEntryId = entry.id;
+    saveLog();
+    renderLog();
     btn.disabled = false;
   }
 });
+
+renderStarters();
+renderLog();
 
 start();
 </script>
